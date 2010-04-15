@@ -1,65 +1,18 @@
 package Optimizer::Plugin;
 
 use strict;
-
-sub _process {
-    my $app = shift;
-    my $opts = shift;
-    my @findings;
-    foreach my $optname ( sort { 
-        $opts->{$a}->{order} ||= 999; 
-        $opts->{$b}->{order} ||= 999; 
-        return $opts->{$a}->{order} <=> $opts->{$b}->{order}
-                          } keys %$opts ) {
-        my $o = $opts->{$optname};
-        next unless $o->{label};
-        my $label = &{$o->{label}};
-        if ( my $cond = $o->{condition} ) {
-            if ( !ref($cond) ) {
-                MT->log( "Found condition: " . $cond);
-                $cond = $o->{condition} = $app->handler_to_coderef($cond);
-            }
-            next unless $cond->( @_ );
-        }
-        my $desc;
-        if ( my $handler = $o->{short_description} ) {
-            if ( !ref($handler) ) {
-                $handler = $o->{short_description} = $app->handler_to_coderef($handler);
-            }
-            $desc = $handler->( @_ );
-        }
-        MT->log({
-                blog_id => $_[0]->blog_id,
-                message => "Analyzing " . $_[0]->name . " for '" . $label . "' optimization."
-            });
-        push @findings, {
-            type        => $optname,
-            label       => $label,
-            description => $desc
-        };
-        last if ($o->{last});
-    }
-    return \@findings;
-}
-
-sub _process_mapping {
-    my $app = shift;
-    my ($tmpl,$map) = @_;
-    my $opts = $app->registry('optimizations')->{'mappings'};
-    return _process( $app, $opts, $tmpl, $map );
-}
-
-sub _process_template {
-    my $app = shift;
-    my ($tmpl) = @_;
-    my $opts = $app->registry('optimizations')->{'templates'};
-    return _process( $app, $opts, $tmpl );
-}
+use MT::Theme::Optimizer;
 
 sub optimize_start {
     my ($app,$type) = @_;
     $app->validate_magic or return;
     my $param ||= {};
+
+    my $optimizer = MT::Theme::Optimizer->new({
+        app     => $app,
+        verbose => 1,
+        logger  => sub { MT->log( $_[0] ); }
+    });
 
     my @loop;
     my @blogs = $app->param('id');
@@ -69,7 +22,8 @@ sub optimize_start {
         my @tmpls = MT->model('template')->load({ blog_id => $blog_id, type => { not => 'backup' } });
         for my $tmpl (@tmpls) {
             next unless $tmpl;
-            for my $recommendation (@{_process_template($app,$tmpl)}) {
+            my $recs = $optimizer->analyze_template( $tmpl );
+            for my $recommendation (@$recs) {
                 push @loop, {
                     '__first__'     => 0,
                     '__last__'      => 0,
@@ -88,7 +42,8 @@ sub optimize_start {
             if ($tmpl->type =~ /^(individual|archive)$/i) {
                 my @maps = MT->model('templatemap')->load({ template_id => $tmpl->id });
                 for my $map (@maps) {
-                    for my $recommendation (@{_process_mapping($app,$tmpl,$map)}) {
+                    my $recs = $optimizer->analyze_mapping( $tmpl, $map );
+                    for my $recommendation (@$recs) {
                         push @loop, {
                             '__first__'     => 0,
                             '__last__'      => 0,
@@ -120,6 +75,13 @@ sub optimize_start {
 sub optimize {
     my ($app) = @_;
     $app->validate_magic or return;
+
+    my $optimizer = MT::Theme::Optimizer->new({
+        app     => $app,
+        verbose => 1,
+        logger  => sub { MT->log( $_[0] ); }
+    });
+
     my @rules = $app->param('id');
     my $count = 0;
     my %templates;
