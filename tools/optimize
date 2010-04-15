@@ -1,0 +1,166 @@
+#!/usr/bin/perl -w
+#
+# (C) 2010 Endevver, LLC. All Rights Reserved.
+#
+# This software is licensed under the GPLv2.
+#
+# Author: Byrne Reese <byrne at majordojo dot com>
+#
+package MT::Tool::OptimizeTemplateSet;
+use strict;
+use warnings;
+use Carp;
+
+use lib qw( lib extlib plugins/Optimizer/lib );
+use base qw( MT::Tool );
+
+sub usage {
+    return qq{--blog=<blog_ids> [--key=<OPTIMZE ID>]};
+}
+
+sub help {
+    return qq{
+        optimize - A tool to optimize the publishing settings of a blog.
+
+        --blog      A list of blog IDs (separated by a comma) for which to 
+                    optimize templates.
+
+        --key       The optimization method to run and apply to a blog.
+
+        --verbose   Show verbose messages.
+
+        --dryrun    Show what the system would do, but don't actually do 
+                    anything.
+};
+}
+
+my ( $BLOG_IDS, $DRYRUN, $VERBOSE, $KEY );
+
+sub options {
+    return (
+        'blog=s'    => \$BLOG_IDS,
+        'key=s'     => \$KEY,
+        'dryrun'    => \$DRYRUN,
+    );
+}
+
+use MT::Theme::Optimizer;
+
+sub main {
+    my $class = shift;
+    $VERBOSE = $class->SUPER::main(@_);
+
+    # No use doing a dry run if we can't see what's happening
+    $VERBOSE = $DRYRUN if $DRYRUN;
+    
+    $class->show_usage() && exit if (! defined $BLOG_IDS);
+
+    my $blog;
+    my $key;
+
+    my $opts = {
+        logger       => sub { print STDERR $_[0] },
+        verbose      => $VERBOSE,
+    };
+
+    my @blog_ids = split(',',$BLOG_IDS);
+    if ($#blog_ids == 0) {
+        $blog = MT->model('blog')->load( $blog_ids[0] );
+    }
+
+    my $optimizer = MT::Theme::Optimizer->new( $opts );
+    my @loop;
+    foreach my $blog_id (@blog_ids) {
+        $blog = MT->model('blog')->load( MT::Util::trim($blog_id) );
+        my @tmpls = MT->model('template')->load({ blog_id => $blog_id, type => { not => 'backup' } });
+        for my $tmpl (@tmpls) {
+            next unless $tmpl;
+            my $recs = $optimizer->analyze_template( $tmpl );
+            for (@$recs) {
+                if ($DRYRUN || $VERBOSE) {
+                    print $_->{description} . "\n";
+                } 
+                unless ($DRYRUN) {
+                    $optimizer->optimize( $_->{'type'}, $tmpl->id );
+                }
+            }
+
+            if ($tmpl->type =~ /^(individual|archive)$/i) {
+                my @maps = MT->model('templatemap')->load({ template_id => $tmpl->id });
+                for my $map (@maps) {
+                    my $recs = $optimizer->analyze_mapping( $tmpl, $map );
+                    for (@$recs) {
+                        if ($DRYRUN || $VERBOSE) {
+                            print $_->{description} . "\n";
+                        }
+                        unless ($DRYRUN) {
+                            $optimizer->optimize( $_->{'type'}, $tmpl->id, $map->id );
+                        }
+                    }
+                }
+            }
+        }
+    }
+    unless ($DRYRUN) {
+        $optimizer->commit();
+    }
+}
+
+sub _prompt {
+    my ($promptString,$defaultValue) = @_;
+    if ($defaultValue) {
+        print $promptString, "[", $defaultValue, "]: ";
+    } else {
+        print $promptString, ": ";
+    }
+    $| = 1;               # force a flush after our print
+    $_ = <STDIN>;         # get the input from STDIN (presumably the keyboard)
+    chomp;
+    if ("$defaultValue") {
+        return $_ ? $_ : $defaultValue;    # return $_ if it has a value
+    } else {
+        return $_;
+    }
+}
+
+__PACKAGE__->main() unless caller;
+
+1;
+__END__
+
+=head1 NAME
+
+optimize - A tool to optimize the publishing settings of a blog.
+
+=head1 SYNOPSIS
+
+    cd /path/to/cgi-bin/mt
+    perl ./tools/optimize -blog=1 -dryrun
+
+=head1 INSTALLATION
+
+Place this script inside your Movable Type "tools" directory.
+
+=head1 DESCRIPTION
+
+I<optimize> is a tool to optimize the publishing settings of a blog's 
+templates and hopefully speed up publishing.
+
+=head1 OPTIONS
+
+The following options are available:
+
+  --blog      The Blog ID to optimize.
+  
+  --key       The key to be used for the creation of the
+              resulting plugin. This is also used to determine
+              the output directory for related files.
+
+=head1 USAGE
+
+From the command line, one would type:
+
+    prompt> chmod a+x optimize
+    prompt> MT_HOME=/path/to/mt optimize --blog=<id> 
+
+=cut
