@@ -8,6 +8,19 @@ blog's templates in the following manner:
   make.
 * Select the specific changes to apply and then to apply them.
 
+# Usage
+
+This plugin's capabilities are accessed from the System's Manage
+Blogs screen. Select the blogs in the table that you want to analyze,
+then select "Optimize" from the action bar's pull down menu. Then
+click "Go."
+
+The subsequent screen will display a listing of the findings the
+plugin has made. Select the ones you would like to apply to your
+templates and click the "Apply" button in the action bar.
+
+You will then be returned to your Manage Blogs page.
+
 # Installation
 
 To install this plugin follow the instructions found here:
