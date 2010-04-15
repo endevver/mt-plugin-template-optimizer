@@ -88,39 +88,10 @@ sub optimize {
     my %mappings;
     for my $rule_key (@rules) {
         my ($rule, @objs) = split(':',$rule_key);
-        my ($tmpl_id, $map_id) = @objs;
-        my $tmpl = $templates{$tmpl_id};
-        $tmpl = $templates{$tmpl_id} = MT->model('template')->load( $tmpl_id ) unless $tmpl;
-        my ($map, $rule_ref, $message);
-        if ($map_id) {
-            $map = $mappings{$map_id};
-            $map = $mappings{$map_id} = MT->model('templatemap')->load( $map_id ) unless $map;
-            $rule_ref = $app->registry('optimizations')->{'mappings'}->{ $rule };
-            $message  = "Applying optimization rule ".$rule." to archive mapping ".$map->archive_type." for ".$tmpl->name;
-        } else {
-            $rule_ref = $app->registry('optimizations')->{'templates'}->{ $rule };
-            $message = "Applying optimization rule '".$rule."' to ".$tmpl->name;
-        }
-        # Apply handler
-        if ( my $handler = $rule_ref->{'handler'} ) {
-            if ( !ref($handler) ) {
-                MT->log("Handler found: " . $handler);
-                $handler = $rule_ref->{'handler'} = $app->handler_to_coderef($handler);
-            }
-            MT->log({ blog_id => $tmpl->id, message => $message });
-            $handler->( $tmpl, $map );
-        }
+        $optimizer->optimize( $rule, @objs );
     }
-    MT->log("Saving all collected changes to templates.");
-    foreach my $tmpl_id ( keys %templates ) {
-        $templates{$tmpl_id}->save() or 
-            MT->log("Template Optimizer could not save template #".$tmpl_id);
-    }
-    MT->log("Saving all collected changes to template mappings.");
-    foreach my $map_id ( keys %mappings ) {
-        $mappings{$map_id}->save() or 
-            MT->log("Template Optimizer could not save template mapping #".$map_id);
-    }
+    $optimizer->commit();
+
     $app->add_return_arg( optimizations_applied => 1 );
     $app->call_return;
 }

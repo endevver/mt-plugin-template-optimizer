@@ -11,7 +11,7 @@ use vars qw( @EXPORT_OK );
 # We are exporting functions
 use base qw/Exporter/;
 # Export list - to allow fine tuning of export table
-@EXPORT_OK = qw( analyze_template analyze_mapping optimize );
+@EXPORT_OK = qw( analyze_template analyze_mapping optimize commit );
 
 sub DESTROY { }
 
@@ -34,10 +34,6 @@ sub new {
 
     bless $self, $class;
     return $self;
-}
-
-sub optimize {
-    my $self = shift;
 }
 
 sub _process {
@@ -89,6 +85,49 @@ sub analyze_template {
     my ($tmpl) = @_;
     my $opts = $self->{'app'}->registry('optimizations')->{'templates'};
     return $self->_process( $opts, $tmpl );
+}
+
+sub optimize {
+    my $self = shift;
+    my ($rule, $tmpl_id, $map_id) = @_;
+
+    my $tmpl = $self->{'template_queue'}->{$tmpl_id};
+    $tmpl = $self->{'template_queue'}->{$tmpl_id} = MT->model('template')->load( $tmpl_id ) unless $tmpl;
+
+    my ($map, $rule_ref, $message);
+    if ($map_id) {
+        $map = $self->{'mapping_queue'}->{$map_id};
+        $map = $self->{'mapping_queue'}->{$map_id} = MT->model('templatemap')->load( $map_id ) unless $map;
+        $rule_ref = $self->{'app'}->registry('optimizations')->{'mappings'}->{ $rule };
+        $message  = "Applying optimization rule ".$rule." to archive mapping ".$map->archive_type." for ".$tmpl->name;
+    } else {
+        $rule_ref = $self->{'app'}->registry('optimizations')->{'templates'}->{ $rule };
+        $message = "Applying optimization rule '".$rule."' to ".$tmpl->name;
+    }
+    # Apply handler
+    if ( my $handler = $rule_ref->{'handler'} ) {
+        if ( !ref($handler) ) {
+            $self->_log("Handler found: " . $handler);
+            $handler = $rule_ref->{'handler'} = $self->{'app'}->handler_to_coderef($handler);
+        }
+        $self->_log( $message );
+        $handler->( $tmpl, $map );
+    }
+}
+
+
+sub commit {
+    my $self = shift;
+    $self->_log("Saving all collected changes to templates.");
+    foreach my $tmpl_id ( keys %{ $self->{'template_queue'} } ) {
+        $self->{'template_queue'}->{$tmpl_id}->save() or 
+            $self->_log("Template Optimizer could not save template #".$tmpl_id);
+    }
+    $self->_log("Saving all collected changes to template mappings.");
+    foreach my $map_id ( keys %{ $self->{'mapping_queue'} } ) {
+        $self->{'mapping_queue'}->{$map_id}->save() or 
+            $self->_log("Template Optimizer could not save template mapping #".$map_id);
+    }
 }
 
 sub _log {
