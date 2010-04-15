@@ -1,0 +1,59 @@
+<mt:setvarblock name="page_title">Optimization Recommendations</mt:setvarblock>
+
+<mt:setvarblock name="html_head" append="1">
+    <script type="text/javascript">
+    <!--
+        var tableSelect;
+        function init() {
+            // setup
+            tableSelect = new TC.TableSelect( "optimizations-listing-table" );
+            tableSelect.rowSelect = true;
+        }
+
+        TC.attachLoadEvent( init );
+    //-->
+    </script>
+<mt:ignore>
+    <script src="<mt:StaticWebPath>plugins/Optimizer/js/jquery-1.3.2.min.js"></script>
+</mt:ignore>
+    <link rel="stylesheet" href="<mt:StaticWebPath>plugins/Optimizer/css/app.css" type="text/css">
+</mt:setvarblock>
+
+<mt:setvarblock name="action_buttons">
+    <a href="javascript:void(0)"
+        onclick="doForMarkedInThisWindow(
+            getByID('optimizations-listing-form'),
+            '<__trans phrase="optimization">', '<__trans phrase="optimizations">',
+            'id', 'optimize'); return false;"
+        accesskey="o"
+        title="<__trans phrase="Apply selected optimizations (o)">"
+        ><__trans phrase="Apply"></a>
+  <!-- more buttons here if you wish -->
+</mt:setvarblock>
+
+<$mt:include name="include/header.tmpl"$>
+
+<mtapp:listing loop="recommend_loop" type="optimizations" hide_pager="0" class="show_all" show_actions="1">
+    <mt:if name="__first__">
+    <thead>
+        <tr>
+            <th class="cb"><input type="checkbox" name="id-head" value="all" class="select" /></th>
+            <th id="l-lbl"><__trans phrase="Recommendation"></th>
+            <th id="l-mxw"><__trans phrase="Template"></th>
+            <th id="l-mxh"><__trans phrase="Blog"></th>
+        </tr>
+    </thead>
+    <tbody>
+    </mt:if>
+        <tr class="<mt:if name="__odd__">odd<mt:else>even</mt:if>">
+            <td class="cb"><input type="checkbox" name="id" value="<mt:var name="type">:<mt:var name="key">" class="select" /></td>
+            <td><mt:var name="description" escape="html"></td>
+            <td><mt:var name="template_name" escape="html"></td>
+            <td><mt:var name="blog_name" escape="html"></td>
+        </tr>
+    <mt:if name="__last__">
+    </tbody>
+    </mt:if>
+</mtapp:listing>
+
+<$mt:include name="include/footer.tmpl"$>

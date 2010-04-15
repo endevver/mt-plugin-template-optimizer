@@ -1,0 +1,111 @@
+id: Optimizer
+name: 'Template Optimizer'
+description: 'This plugin has the ability to sift through your system, offer recommendations for you can improve the publishing performance of your system and then optionally make them.'
+version: 0.1
+
+applications:
+  cms:
+    list_actions:
+      blog:
+        optimize:
+          label: Optimize
+          order: 110
+          handler:  $Optimizer::Optimizer::Plugin::optimize_start
+    methods:
+      optimize_start: $Optimizer::Optimizer::Plugin::optimize_start
+      optimize: $Optimizer::Optimizer::Plugin::optimize
+
+optimizations:
+  mappings:
+    archives_jsxml_pub:
+      label: "Send Date-based Archives to Publish Queue"
+      short_description: >
+        sub { return 'Change archive of type "'.$_[1]->archive_type.'" for "'.$_[0]->name.'" template to publish via Publish Queue.' }
+      help: 'Some archive types, like date-based archives, are not critical to a reader\'s experience. As such it is best to publish those in the background using Publish Queue.'
+      order: 1
+      condition: >
+        sub { require MT::PublishOption; $_[1]->archive_type =~ /(monthly|weekly|yearly|daily)/i && $_[1]->build_type != MT::PublishOption::ASYNC() }
+      handler: >
+        sub { require MT::PublishOption; $_[1]->build_type( MT::PublishOption::ASYNC() ); }
+    comment_feeds:
+      label: "Send Comment Feeds to Publish Queue"
+      short_description: >
+        sub { return 'Change comment feed with name of "'.$_[0]->name.'" to publish via Publish Queue.' }
+      help: 'Rarely is it critical for comment feeds to be updated in real time. Therefore it is recommended that comments feeds be published in the background using Publish Queue.'
+      order: 1
+      condition: >
+        sub { require MT::PublishOption; $_[1]->file_template =~ /\.(xml|rss)$/i && $_[1]->build_type != MT::PublishOption::ASYNC() }
+      handler: >
+        sub { require MT::PublishOption; $_[1]->build_type( MT::PublishOption::ASYNC() ); }
+    category_pub:
+      label: "Send Category Archives to Publish Queue"
+      short_description: >
+        sub { return 'Change "'.$_[1]->archive_type.'" for "'.$_[0]->name.'" template to publish via Publish Queue.' }
+      help: 'Some archive types, like category archives, are not critical to a reader\'s experience. As such it is best to publish those in the background using Publish Queue.'
+      order: 1
+      condition: >
+        sub { require MT::PublishOption; $_[1]->archive_type =~ /(category)/i && $_[1]->build_type != MT::PublishOption::ASYNC() }
+      handler: >
+        sub { require MT::PublishOption; $_[1]->build_type( MT::PublishOption::ASYNC() ); }
+  templates:
+    jscss_pub:
+      label: "No needless publishing"
+      short_description: >
+        sub { return 'Change "'.$_[0]->name.'" template to publish manually.' }
+      help: 'There are a number of files a web site can publish that do not need to be published that frequently, if only once. Stylesheets, javascript files and RSD files are a perfect example of this. To optimize these files, we recommend setting these templates to publish "manually."'
+      order: 1
+      condition: >
+        sub { require MT::PublishOption; $_[0]->type eq 'index' && ($_[0]->outfile =~ /\.(css|js)$/ || $_[0]->outfile eq 'rsd.xml') && $_[0]->build_type != MT::PublishOption::MANUALLY() }
+      handler: >
+        sub { require MT::PublishOption; $_[0]->build_type( MT::PublishOption::MANUALLY() ); }
+      last: 1
+    xml_pub:
+      label: "Publish feeds in the background"
+      short_description: >
+        sub { return 'Change "'.$_[0]->name.'" template to publish via publish queue.' }
+      help: 'Feeds are a type of file in a blog that do not need to be updated in real time. These files should be published via the Publish Queue, if that has been enabled on your system.'
+      order: 2
+      condition: >
+        sub { require MT::PublishOption; $_[0]->type eq 'index' && ($_[0]->outfile =~ /\.(xml|rss)$/) && $_[0]->build_type != MT::PublishOption::ASYNC() }
+      handler: >
+        sub { require MT::PublishOption; $_[0]->build_type( MT::PublishOption::ASYNC() ); }
+    recent_entries:
+      label: "Recent Entries widget should be cached"
+      short_description: >
+        sub { return 'Turn on caching for the "'.$_[0]->name.'" widget.' }
+      help: 'The "Recent Entries" widget should be cached and only be refreshed when new entries are received. This will help minimize the amount of republishing needed system wide.'
+      order: 3
+      condition: >
+        sub { $_[0]->type eq 'widget' && ($_[0]->name =~ /recent entries/i) && $_[0]->cache_expire_type != 2 && $_[0]->cache_expire_event ne 'entry' }
+      handler: >
+        sub { $_[0]->cache_expire_type( 2 ); $_[0]->cache_expire_event('entry'); }
+    recent_comments:
+      label: "Recent Comments widget should be cached"
+      short_description: >
+        sub { return 'Turn on caching for the "'.$_[0]->name.'" widget.' }
+      help: 'The Recent Comments" widget should be cached and only be refreshed when new comments are received. This will help minimize the amount of republishing needed system wide.'
+      order: 3
+      condition: >
+        sub { $_[0]->type eq 'widget' && ($_[0]->name =~ /recent comments/i) && $_[0]->cache_expire_type != 2 && $_[0]->cache_expire_event ne 'comment' }
+      handler: >
+        sub { $_[0]->cache_expire_type( 2 ); $_[0]->cache_expire_event('comment'); }
+    recent_ssi:
+      label: "Recent Comments and Entries widget should be SSIs"
+      short_description: >
+        sub { return 'Convert the "'.$_[0]->name.'" widget into a Server Side Include.' }
+      help: 'The "Recent Comments" and "Recent Entries" widgets should be turned into converted into a server side include to so that their contents are updated in real time across all pages that utilize the widget. This helps keep your web site\'s remain fresh.'
+      order: 4
+      condition: >
+        sub { $_[0]->type eq 'widget' && ($_[0]->name =~ /recent (comments|entries)/i) && $_[0]->include_with_ssi == 0 }
+      handler: >
+        sub { $_[0]->include_with_ssi( 1 ); }
+    archives_pq:
+      label: "Publish Archive Index in the background"
+      short_description: >
+        sub { return 'Publish the "'.$_[0]->name.'" template via Publish Queue.' }
+      help: 'Archive index templates tend to be really large. So large that publishing them statically can bring systems to a halt (especially for large systems). It is recommended these be published in the background.'
+      order: 5
+      condition: >
+        sub { require MT::PublishOption; $_[0]->type eq 'index' && ($_[0]->identifier eq 'archive_index' || $_[0]->name =~ /Archive Index/i) && $_[0]->build_type != MT::PublishOption::ASYNC() }
+      handler: >
+        sub { require MT::PublishOption; $_[0]->build_type( MT::PublishOption::ASYNC() ); }
